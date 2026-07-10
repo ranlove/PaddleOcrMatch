@@ -7,12 +7,15 @@ namespace PaddleOcr
 {
     internal class Program
     {
+        private const int MaxImageSideLength = 2048;
+        private static readonly int CpuMathThreadCount = Math.Max(1, Environment.ProcessorCount/2);
+
         static async Task Main(string[] args)
         {
             // var imageDirectory = args.Length > 0
             //     ? args[0]
             //     : Path.Combine(AppContext.BaseDirectory, "Images");
-            const string sourceDirectory = @"C:\Users\ryan.li\Desktop\Images";
+            const string sourceDirectory = @"C:\Users\ryan.li\Desktop\ocr\files";
             const string targetDirectory = @"C:\Users\ryan.li\Desktop\TargetImages";
 
             if (!Directory.Exists(sourceDirectory))
@@ -49,37 +52,45 @@ namespace PaddleOcr
                 "阿里巴巴"
             };
 
-            using PaddleOcrService ocr = new();
+            using PaddleOcrService ocr = new(new PaddleOcrOptions
+            {
+                AllowRotateDetection = true,
+                Enable180Classification = false,
+                CpuMathThreadCount = CpuMathThreadCount,
+                MaxImageSideLength = MaxImageSideLength
+            });
             var searcher = new ImageSearcher(ocr);
 
-            var result = await searcher.SearchAsync(
+            var matchCount = await searcher.SearchAsync(
                 images,
                 keywords,
-                progress: (current, total) =>
+                onMatch: item =>
                 {
-                    Console.WriteLine($"处理进度：{current}/{total}");
+                    var copiedFilePath = CopyMatchedImage(item.Image, targetDirectory);
+
+                    Console.WriteLine(item.Image);
+                    Console.WriteLine($"已复制到：{copiedFilePath}");
+                    Console.WriteLine("命中关键词：");
+
+                    foreach (var k in item.Keywords)
+                    {
+                        Console.WriteLine(k);
+                    }
+
+                    Console.WriteLine();
+                },
+                progress: (current, total, image) =>
+                {
+                    Console.WriteLine($"处理进度：{current}/{total}，正在处理：{Path.GetFileName(image)}");
                 });
 
-            if (result.Count == 0)
+            if (matchCount == 0)
             {
                 Console.WriteLine("No keywords matched.");
                 return;
             }
 
-            foreach (var item in result)
-            {
-                var copiedFilePath = CopyMatchedImage(item.Image, targetDirectory);
-
-                Console.WriteLine(item.Image);
-                Console.WriteLine($"已复制到：{copiedFilePath}");
-                Console.WriteLine("命中关键词：");
-
-                foreach (var k in item.Keywords)
-                {
-                    Console.WriteLine(k);
-                }
-                Console.WriteLine();
-            }
+            Console.WriteLine($"命中图片总数：{matchCount}");
         }
 
         private static string CopyMatchedImage(string sourceImagePath, string targetDirectory)
